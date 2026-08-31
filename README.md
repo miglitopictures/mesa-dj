@@ -1,4 +1,4 @@
-# Mesa de DJ com Threads (Java)
+# Mesa de DJ com Threads
 
 Aplicação de terminal em Java que simula uma mesa de DJ: cada faixa musical
 (instrumento) toca em sua **própria thread**, de forma independente e
@@ -7,6 +7,8 @@ pausando, retomando, adicionando e removendo faixas sem afetar as demais.
 
 As faixas de exemplo estão em `stems/` (`drums.wav`, `bass.wav`, `other.wav`),
 carregadas no início como **bateria**, **baixo** e **synth**.
+
+> música original: UCLA - Vulfmon x Louie Zong
 
 ---
 
@@ -123,7 +125,7 @@ tocando. Aceita um arquivo de áudio (`add stems/other.wav`), um nome + arquivo
 (`add synth2 stems/other.wav`) ou apenas um nome, caso em que um pequeno som
 é sintetizado na hora pelo `ToneGenerator` (`add guitarra`).
 
-> O desafio opcional de BPM foi removido a pedido do escopo final da atividade.
+> O desafio opcional de BPM não foi realizado.
 
 ---
 
