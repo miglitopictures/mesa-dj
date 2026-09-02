@@ -5,120 +5,74 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
-/**
- * A "mesa de DJ": guarda todas as faixas cadastradas e cuida das threads delas.
- *
- * ---------------------------------------------------------------------------
- * SINCRONIZACAO
- * ---------------------------------------------------------------------------
- * O mapa de faixas tambem e estado compartilhado entre threads:
- *   - a thread principal adiciona faixas (add), remove faixas (remove) e
- *     busca faixas para pausar/retomar;
- *   - a thread do painel percorre a lista de faixas a cada 2 segundos para
- *     desenhar a tela.
- *
- * Percorrer um LinkedHashMap enquanto outra thread o modifica causaria
- * ConcurrentModificationException / leituras inconsistentes. Por isso, todo
- * acesso ao mapa acontece dentro de um bloco synchronized no mesmo objeto
- * "lock", e allTracks() devolve uma COPIA da lista, para que quem for
- * percorrer nao dependa mais do lock.
- *
- * ---------------------------------------------------------------------------
- * PORTAO DE LARGADA (inicio sincronizado)
- * ---------------------------------------------------------------------------
- * O Mixer guarda um CountDownLatch compartilhado por todas as faixas. Cada
- * faixa carrega seu audio e entao bloqueia nesse portao. Quando o Main termina
- * de carregar as faixas iniciais, chama releaseAll() uma unica vez e todas
- * comecam a tocar praticamente no mesmo instante.
- *
- * Faixas adicionadas depois (comando "add") recebem o mesmo portao, que a
- * essa altura ja esta aberto — entao elas comecam a tocar imediatamente.
- */
 public class Mixer {
+   private final Map<String, Track> tracks = new LinkedHashMap();
+   private final Object lock = new Object();
+   private final CountDownLatch startGate = new CountDownLatch(1);
 
-    /** Faixas por nome (em minusculo). LinkedHashMap mantem a ordem de insercao. */
-    private final Map<String, Track> tracks = new LinkedHashMap<>();
+   public Mixer() {
+   }
 
-    /** Lock unico que protege o mapa acima contra acesso concorrente. */
-    private final Object lock = new Object();
+   public CountDownLatch getStartGate() {
+      return this.startGate;
+   }
 
-    /** Portao de largada: 1 contagem, liberada uma unica vez por releaseAll(). */
-    private final CountDownLatch startGate = new CountDownLatch(1);
+   public void releaseAll() {
+      this.startGate.countDown();
+   }
 
-    public CountDownLatch getStartGate() {
-        return startGate;
-    }
+   public void addTrack(Track var1) {
+      synchronized(this.lock) {
+         this.tracks.put(this.key(var1.getName()), var1);
+      }
 
-    /** Abre o portao: todas as faixas que estavam esperando comecam juntas. */
-    public void releaseAll() {
-        startGate.countDown();
-    }
+      Thread var2 = new Thread(var1, "faixa-" + var1.getName());
+      var2.setDaemon(true);
+      var2.start();
+   }
 
-    /**
-     * Cadastra a faixa na mesa e inicia sua thread dedicada.
-     *
-     * A thread e marcada como daemon para que o programa nao fique preso
-     * caso encerre por um caminho inesperado; o encerramento normal continua
-     * sendo feito de forma controlada via requestStop().
-     */
-    public void addTrack(Track track) {
-        synchronized (lock) {
-            tracks.put(key(track.getName()), track);
-        }
-        Thread thread = new Thread(track, "faixa-" + track.getName());
-        thread.setDaemon(true);
-        thread.start();
-    }
+   public Track removeTrack(String var1) {
+      Track var2;
+      synchronized(this.lock) {
+         var2 = (Track)this.tracks.remove(this.key(var1));
+      }
 
-    /**
-     * Retira uma faixa da mesa: pede o encerramento seguro da thread dela
-     * (que vai liberar o recurso de audio) e tira do mapa para que ela suma
-     * do painel.
-     *
-     * @return a faixa removida, ou null se nao existia nenhuma com esse nome.
-     */
-    public Track removeTrack(String name) {
-        Track removed;
-        synchronized (lock) {
-            removed = tracks.remove(key(name));
-        }
-        if (removed != null) {
-            removed.requestStop(); // encerramento controlado, sem matar a thread
-        }
-        return removed;
-    }
+      if (var2 != null) {
+         var2.requestStop();
+      }
 
-    /** Busca uma faixa pelo nome (sem diferenciar maiusculas/minusculas). */
-    public Track get(String name) {
-        synchronized (lock) {
-            return tracks.get(key(name));
-        }
-    }
+      return var2;
+   }
 
-    public boolean exists(String name) {
-        synchronized (lock) {
-            return tracks.containsKey(key(name));
-        }
-    }
+   public Track get(String var1) {
+      synchronized(this.lock) {
+         return (Track)this.tracks.get(this.key(var1));
+      }
+   }
 
-    /** Copia defensiva da lista de faixas, segura para o painel percorrer. */
-    public List<Track> allTracks() {
-        synchronized (lock) {
-            return new ArrayList<>(tracks.values());
-        }
-    }
+   public boolean exists(String var1) {
+      synchronized(this.lock) {
+         return this.tracks.containsKey(this.key(var1));
+      }
+   }
 
-    /** Sinaliza para todas as faixas encerrarem de forma segura (saida do app). */
-    public void stopAll() {
-        synchronized (lock) {
-            for (Track t : tracks.values()) {
-                t.requestStop();
-            }
-            tracks.clear();
-        }
-    }
+   public List<Track> allTracks() {
+      synchronized(this.lock) {
+         return new ArrayList(this.tracks.values());
+      }
+   }
 
-    private String key(String name) {
-        return name.toLowerCase(Locale.ROOT);
-    }
+   public void stopAll() {
+      synchronized(this.lock) {
+         for(Track var3 : this.tracks.values()) {
+            var3.requestStop();
+         }
+
+         this.tracks.clear();
+      }
+   }
+
+   private String key(String var1) {
+      return var1.toLowerCase(Locale.ROOT);
+   }
 }
